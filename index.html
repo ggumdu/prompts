@@ -22,8 +22,19 @@
   }
   .wrap { max-width: 600px; margin: 0 auto; padding: 40px 20px 60px; }
 
-  /* ===== 첫 화면: 큰 숫자 지그재그 ===== */
-  .row { display: flex; margin-bottom: -6px; }
+  /* ===== 첫 화면: 큰 숫자 지그재그 — 화면 세로 전체에 퍼지게 ===== */
+  #home {
+    display: flex; flex-direction: column;
+    min-height: calc(100vh - 100px);
+    min-height: calc(100svh - 100px);
+  }
+  #list {
+    flex: 1;
+    display: flex; flex-direction: column;
+    justify-content: space-evenly;
+    gap: 8px;
+  }
+  .row { display: flex; }
   .pt { position: relative; display: flex; align-items: center; gap: 8px; cursor: pointer; user-select: none; }
   .num {
     font-size: 72px; font-weight: 800; font-style: italic;
