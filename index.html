@@ -1,0 +1,338 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>pair prompts</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css">
+<style>
+  :root {
+    --text: #001e3f;
+    --sub: #8a8a8a;
+    --faint: #c4c4c4;
+    --soft: #f5f5f5;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+  body {
+    font-family: 'Pretendard', sans-serif;
+    background: #fff;
+    color: var(--text);
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+  }
+  .wrap { max-width: 600px; margin: 0 auto; padding: 40px 20px 60px; }
+
+  /* ===== 첫 화면: 큰 숫자 지그재그 ===== */
+  .row { display: flex; margin-bottom: -6px; }
+  .pt { position: relative; display: flex; align-items: center; gap: 8px; cursor: pointer; user-select: none; }
+  .num {
+    font-size: 72px; font-weight: 800; font-style: italic;
+    color: transparent; -webkit-text-stroke: 1.2px var(--text);
+    line-height: 1; letter-spacing: -3px; padding-right: 6px;
+  }
+  @media (min-width: 600px) { .num { font-size: 104px; -webkit-text-stroke: 1.5px var(--text); } }
+  .lbl {
+    font-size: 11px; font-weight: 500;
+    border: 1px solid var(--text); background: #fff;
+    padding: 2px 6px; white-space: nowrap;
+  }
+  /* 마우스 있는 기기: 숫자에 올리면 이름으로 바뀜 / 폰: 이름이 숫자 옆에 항상 보임 */
+  @media (hover: hover) {
+    .pt { gap: 0; }
+    .lbl { position: absolute; top: 50%; left: 0; transform: translateY(-50%); visibility: hidden; }
+    .pt:hover .num { visibility: hidden; }
+    .pt:hover .lbl { visibility: visible; }
+  }
+
+  .sign { margin-top: 28px; width: 110px; display: flex; flex-direction: column; gap: 6px; }
+  .sign i { height: 1px; background: var(--text); }
+  .sign span { font-size: 12px; color: var(--sub); letter-spacing: -0.2px; }
+
+  /* ===== 페어 화면 ===== */
+  .back { display: inline-block; font-size: 12px; font-weight: 600; cursor: pointer; user-select: none; margin-bottom: 12px; }
+
+  .car, .sl { display: flex; overflow-x: auto; scroll-snap-type: x mandatory; scrollbar-width: none; }
+  .car::-webkit-scrollbar, .sl::-webkit-scrollbar { display: none; }
+  .au, .sd { flex: 0 0 100%; min-width: 0; scroll-snap-align: start; }
+  .au { cursor: pointer; }
+  /* AU 사진 비율 — 2 / 1 숫자를 바꾸면 사진 높이가 달라져요 */
+  .au-img { width: 100%; aspect-ratio: 2 / 1; background: var(--soft); overflow: hidden; }
+  .au-img img { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .noimg { display: flex; align-items: center; justify-content: center; font-size: 11px; color: var(--sub); }
+  .aubar { display: flex; justify-content: space-between; margin-top: 6px; font-size: 11px; color: var(--sub); }
+  .aubar b { color: var(--text); font-weight: 600; }
+  .hint { font-size: 11px; color: var(--faint); margin-top: 2px; }
+
+  /* 프롬프트 창 */
+  .panel { border-top: 1px solid var(--text); padding-top: 12px; margin-top: 14px; }
+  .tabs { display: flex; gap: 14px; margin-bottom: 10px; overflow-x: auto; scrollbar-width: none; }
+  .tabs::-webkit-scrollbar { display: none; }
+  .tab { font-size: 13px; font-weight: 700; color: var(--faint); cursor: pointer; user-select: none; white-space: nowrap; }
+  .tab.on { color: var(--text); }
+  .field { margin-bottom: 10px; }
+  .field-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px; }
+  .field-label { font-size: 11px; font-weight: 700; color: var(--sub); }
+  .box { background: var(--soft); padding: 8px 10px; font-size: 12px; line-height: 1.55; white-space: pre-wrap; word-break: break-word; }
+  .box.empty { color: var(--faint); }
+  .btn {
+    display: inline-block; font-size: 11px; font-weight: 600; line-height: 1.5;
+    background: var(--text); color: #fff;
+    border: 1px solid var(--text); border-radius: 0;
+    padding: 2px 8px; min-width: 44px; text-align: center;
+    cursor: pointer; user-select: none;
+  }
+  .btn.all { background: #fff; color: var(--text); }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div id="home">
+    <div id="list"></div>
+    <div class="sign"><i></i><span>pair prompts</span></div>
+  </div>
+  <div id="view" style="display:none"></div>
+</div>
+
+<script>
+/* ============================================
+   ✏️ 여기만 고치면 돼요!
+
+   페어 하나 = { } 덩어리 하나 (순서대로 01, 02, 03... 위치는 자동)
+   name: 숫자에 올리면 / 폰에서 옆에 보이는 이름
+   aus: 사진 + 프롬프트 묶음. AU가 여러 개면 { } 를 더 추가 → 옆으로 넘겨져요
+        label: AU 이름 / image: 사진 파일 이름 (예: "pair1.jpg")
+   프롬프트는 ` ` (백틱) 사이에 넣기
+   ============================================ */
+const pairs = [
+  {
+    name: "pair 01",
+    aus: [
+      {
+        label: "기본",
+        image: "",
+        chars: [
+          { name: "캐릭터 이름", look: `외관 프롬프트`, outfit: `의상 프롬프트` },
+          { name: "캐릭터 이름", look: `외관 프롬프트`, outfit: `의상 프롬프트` }
+        ]
+      },
+      {
+        label: "AU 이름",
+        image: "",
+        chars: [
+          { name: "캐릭터 이름", look: ``, outfit: `` },
+          { name: "캐릭터 이름", look: ``, outfit: `` }
+        ]
+      }
+    ]
+  },
+  {
+    name: "pair 02",
+    aus: [
+      {
+        label: "기본",
+        image: "",
+        chars: [
+          { name: "캐릭터 이름", look: ``, outfit: `` },
+          { name: "캐릭터 이름", look: ``, outfit: `` }
+        ]
+      }
+    ]
+  },
+  {
+    name: "pair 03",
+    aus: [
+      {
+        label: "기본",
+        image: "",
+        chars: [
+          { name: "캐릭터 이름", look: ``, outfit: `` },
+          { name: "캐릭터 이름", look: ``, outfit: `` }
+        ]
+      }
+    ]
+  },
+  {
+    name: "pair 04",
+    aus: [
+      {
+        label: "기본",
+        image: "",
+        chars: [
+          { name: "캐릭터 이름", look: ``, outfit: `` },
+          { name: "캐릭터 이름", look: ``, outfit: `` }
+        ]
+      }
+    ]
+  },
+  {
+    name: "pair 05",
+    aus: [
+      {
+        label: "기본",
+        image: "",
+        chars: [
+          { name: "캐릭터 이름", look: ``, outfit: `` },
+          { name: "캐릭터 이름", look: ``, outfit: `` }
+        ]
+      }
+    ]
+  }
+];
+/* ============================================ */
+
+/* 숫자 들여쓰기 패턴 (%) — 이 순서대로 반복돼요 */
+const steps = [0, 46, 16, 52, 4, 34];
+
+const home = document.getElementById('home');
+const view = document.getElementById('view');
+
+function esc(s) {
+  return String(s || '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+function num(i) { return String(i + 1).padStart(2, '0'); }
+
+/* 첫 화면 숫자 */
+document.getElementById('list').innerHTML = pairs.map((p, i) => `
+  <div class="row" style="padding-left:${steps[i % steps.length]}%">
+    <div class="pt" data-i="${i}">
+      <span class="num">${num(i)}</span>
+      <span class="lbl">${esc(p.name)}</span>
+    </div>
+  </div>`).join('');
+
+let cur = null, openAu = -1;
+
+function field(label, text) {
+  const t = (text || '').trim();
+  return `
+    <div class="field">
+      <div class="field-head">
+        <span class="field-label">${label}</span>
+        <span class="btn" data-t="${esc(t)}">복사</span>
+      </div>
+      <div class="box ${t ? '' : 'empty'}">${t ? esc(t) : '비어 있음'}</div>
+    </div>`;
+}
+function sd(c) {
+  const all = [c.look, c.outfit].map(s => (s || '').trim()).filter(Boolean).join(', ');
+  return `
+    <div class="sd">
+      ${field('외관', c.look)}
+      ${field('의상', c.outfit)}
+      <span class="btn all" data-t="${esc(all)}">전체 복사</span>
+    </div>`;
+}
+function panel(a) {
+  const au = cur.aus[a];
+  return `
+    <div class="panel">
+      <div class="tabs">${au.chars.map((c, k) => `<span class="tab${k ? '' : ' on'}" data-k="${k}">${esc(c.name)}</span>`).join('')}</div>
+      <div class="sl" id="sl">${au.chars.map(sd).join('')}</div>
+    </div>`;
+}
+function bindSl() {
+  const sl = document.getElementById('sl');
+  if (!sl) return;
+  sl.addEventListener('scroll', () => {
+    const k = Math.round(sl.scrollLeft / sl.clientWidth);
+    view.querySelectorAll('.tab').forEach((t, j) => t.classList.toggle('on', j === k));
+  });
+}
+function auImg(a) {
+  const s = (a.image || '').trim();
+  return s
+    ? `<div class="au-img"><img src="${esc(s)}" alt="${esc(a.label)}"></div>`
+    : `<div class="au-img noimg">NO IMAGE</div>`;
+}
+
+function openPair(i) {
+  cur = pairs[i];
+  openAu = -1;
+  const n = cur.aus.length;
+  view.innerHTML = `
+    <span class="back" id="back">← index</span>
+    <div class="car" id="car">${cur.aus.map((a, k) => `<div class="au" data-a="${k}">${auImg(a)}</div>`).join('')}</div>
+    <div class="aubar"><span id="aul">${esc(cur.aus[0].label)}</span><span>${n > 1 ? `<b id="aup">1</b> / ${n}` : ''}</span></div>
+    <div class="hint">사진을 누르면 프롬프트가 열려요</div>
+    <div id="panel"></div>`;
+  home.style.display = 'none';
+  view.style.display = 'block';
+  window.scrollTo(0, 0);
+
+  const car = document.getElementById('car');
+  car.addEventListener('scroll', () => {
+    const k = Math.round(car.scrollLeft / car.clientWidth);
+    document.getElementById('aul').textContent = cur.aus[k].label;
+    const p = document.getElementById('aup');
+    if (p) p.textContent = k + 1;
+    if (openAu !== -1 && openAu !== k) {
+      openAu = -1;
+      document.getElementById('panel').innerHTML = '';
+    }
+  });
+}
+function showHome() {
+  view.style.display = 'none';
+  home.style.display = 'block';
+}
+
+/* 폰 뒤로가기 누르면 첫 화면으로 */
+window.addEventListener('popstate', showHome);
+
+/* 복사 */
+function done(b, msg) {
+  const o = b.dataset.o || b.textContent;
+  b.dataset.o = o;
+  b.textContent = msg;
+  clearTimeout(b._t);
+  b._t = setTimeout(() => b.textContent = o, 1200);
+}
+function fallbackCopy(t, b) {
+  const a = document.createElement('textarea');
+  a.value = t;
+  a.style.position = 'absolute'; a.style.opacity = '0';
+  document.body.appendChild(a);
+  a.select();
+  try { document.execCommand('copy'); done(b, '복사됨'); }
+  catch (e) { done(b, '실패'); }
+  a.remove();
+}
+
+document.addEventListener('click', e => {
+  const pt = e.target.closest('.pt');
+  if (pt) {
+    history.pushState({ pair: +pt.dataset.i }, '');
+    openPair(+pt.dataset.i);
+    return;
+  }
+  if (e.target.id === 'back') { history.back(); return; }
+
+  const au = e.target.closest('.au');
+  if (au) {
+    const a = +au.dataset.a;
+    const pn = document.getElementById('panel');
+    if (openAu === a) { openAu = -1; pn.innerHTML = ''; }
+    else { openAu = a; pn.innerHTML = panel(a); bindSl(); }
+    return;
+  }
+
+  const tab = e.target.closest('.tab');
+  if (tab) {
+    const sl = document.getElementById('sl');
+    sl.scrollTo({ left: +tab.dataset.k * sl.clientWidth, behavior: 'smooth' });
+    return;
+  }
+
+  const b = e.target.closest('.btn');
+  if (!b) return;
+  const t = b.dataset.t;
+  if (!t) { done(b, '비어있음'); return; }
+  if (navigator.clipboard && window.isSecureContext) {
+    navigator.clipboard.writeText(t).then(() => done(b, '복사됨'), () => fallbackCopy(t, b));
+  } else {
+    fallbackCopy(t, b);
+  }
+});
+</script>
+</body>
+</html>
