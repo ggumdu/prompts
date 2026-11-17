@@ -82,10 +82,12 @@
   /* 사진 없을 때 회색 칸 비율 */
   .au-img.noimg { aspect-ratio: 2 / 1; background: var(--soft); }
   /* 사진 칸 높이를 지금 보이는 사진에 맞춤 — 아래 글씨가 항상 사진 바로 밑에 붙어요 */
-  .car { align-items: flex-start; overflow-y: hidden; transition: height .3s ease; }
+  .car { align-items: flex-start; overflow-y: hidden; transition: height .4s cubic-bezier(.2,.7,.2,1); }
+  #aul { transition: opacity .2s ease; }
+  #aul.fade { opacity: 0; }
 
   /* 처음엔 사진이 화면 가운데 → 누르면 위로 올라가면서 프롬프트 등장 */
-  .top { transition: transform .45s cubic-bezier(.2,.7,.2,1); will-change: transform; }
+  .top { transition: transform .4s cubic-bezier(.2,.7,.2,1); will-change: transform; }
   .panel { animation: rise .4s ease both; }
   @keyframes rise { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: none; } }
   .noimg { display: flex; align-items: center; justify-content: center; font-size: 11px; color: var(--sub); }
@@ -294,12 +296,18 @@ function openPair(i) {
   top.style.transition = '';
   car.style.transition = '';
 
-  let lastK = 0;
-  car.addEventListener('scroll', () => {
+  /* 넘기는 동안엔 아무것도 안 움직이고, 손 떼고 멈춘 뒤에 한 번만 부드럽게 바뀜 */
+  let lastK = 0, settleT;
+  function settle() {
     const k = Math.round(car.scrollLeft / car.clientWidth);
     if (k === lastK) return;
     lastK = k;
-    document.getElementById('aul').textContent = cur.aus[k].label;
+    const aul = document.getElementById('aul');
+    aul.classList.add('fade');
+    setTimeout(() => {
+      aul.textContent = cur.aus[k].label;
+      aul.classList.remove('fade');
+    }, 200);
     const p = document.getElementById('aup');
     if (p) p.textContent = k + 1;
     if (openAu !== -1 && openAu !== k) {
@@ -307,7 +315,12 @@ function openPair(i) {
       document.getElementById('panel').innerHTML = '';
     }
     fitCar();
-  });
+  }
+  car.addEventListener('scroll', () => {
+    clearTimeout(settleT);
+    settleT = setTimeout(settle, 120);
+  }, { passive: true });
+  if ('onscrollend' in window) car.addEventListener('scrollend', () => { clearTimeout(settleT); settle(); });
 }
 
 /* 사진 칸 높이를 지금 보이는 사진 높이로 맞추기 */
