@@ -82,9 +82,10 @@
   /* 사진 없을 때 회색 칸 비율 */
   .au-img.noimg { aspect-ratio: 2 / 1; background: var(--soft); }
   /* 사진 칸 높이를 지금 보이는 사진에 맞춤 — 아래 글씨가 항상 사진 바로 밑에 붙어요 */
-  .car { align-items: flex-start; overflow-y: hidden; transition: height .4s cubic-bezier(.2,.7,.2,1); }
-  #aul { transition: opacity .2s ease; }
-  #aul.fade { opacity: 0; }
+  /* 사진 칸 높이는 바깥 틀(carwrap)에서만 바꿔요 — 넘기는 칸 자체는 건드리지 않아서 튕김 없음 */
+  .carwrap { overflow: hidden; }
+  .car { align-items: flex-start; overscroll-behavior-x: contain; }
+  .au { scroll-snap-stop: always; }
 
   /* 처음엔 사진이 화면 가운데 → 누르면 위로 올라가면서 프롬프트 등장 */
   .top { transition: transform .4s cubic-bezier(.2,.7,.2,1); will-change: transform; }
@@ -277,7 +278,7 @@ function openPair(i) {
   view.innerHTML = `
     <div class="top" id="top">
       <span class="back" id="back">← index</span>
-      <div class="car" id="car">${cur.aus.map((a, k) => `<div class="au" data-a="${k}">${auImg(a)}</div>`).join('')}</div>
+      <div class="carwrap" id="carwrap"><div class="car" id="car">${cur.aus.map((a, k) => `<div class="au" data-a="${k}">${auImg(a)}</div>`).join('')}</div></div>
       <div class="aubar"><span id="aul">${esc(cur.aus[0].label)}</span><span>${n > 1 ? `<b id="aup">1</b> / ${n}` : ''}</span></div>
       <div class="hint">사진을 누르면 프롬프트가 열려요</div>
     </div>
@@ -290,49 +291,56 @@ function openPair(i) {
   const top = document.getElementById('top');
   const car = document.getElementById('car');
   top.style.transition = 'none';
-  car.style.transition = 'none';
   fitCar();
   top.offsetHeight;
   top.style.transition = '';
-  car.style.transition = '';
 
-  /* 넘기는 동안엔 아무것도 안 움직이고, 손 떼고 멈춘 뒤에 한 번만 부드럽게 바뀜 */
-  let lastK = 0, settleT;
-  function settle() {
-    const k = Math.round(car.scrollLeft / car.clientWidth);
-    if (k === lastK) return;
-    lastK = k;
-    const aul = document.getElementById('aul');
-    aul.classList.add('fade');
-    setTimeout(() => {
-      aul.textContent = cur.aus[k].label;
-      aul.classList.remove('fade');
-    }, 200);
-    const p = document.getElementById('aup');
-    if (p) p.textContent = k + 1;
-    if (openAu !== -1 && openAu !== k) {
-      openAu = -1;
-      document.getElementById('panel').innerHTML = '';
-    }
-    fitCar();
-  }
+  /* 손가락 움직임에 딱 붙어서 사진 높이·글씨 위치가 같이 따라옴 (지연 없음) */
+  let lastK = 0, raf = 0;
   car.addEventListener('scroll', () => {
-    clearTimeout(settleT);
-    settleT = setTimeout(settle, 120);
+    if (raf) return;
+    raf = requestAnimationFrame(() => {
+      raf = 0;
+      top.style.transition = 'none';
+      fitCar();
+      const k = Math.round(car.scrollLeft / car.clientWidth);
+      if (k !== lastK) {
+        lastK = k;
+        document.getElementById('aul').textContent = cur.aus[k].label;
+        const p = document.getElementById('aup');
+        if (p) p.textContent = k + 1;
+        /* 프롬프트가 열려 있으면 넘긴 AU의 프롬프트로 바로 바꿔서 열린 채 유지 */
+        if (openAu !== -1 && openAu !== k) {
+          openAu = k;
+          const pn = document.getElementById('panel');
+          pn.innerHTML = panel(k);
+          pn.firstElementChild.style.animation = 'none';
+          bindSl();
+        }
+      }
+    });
   }, { passive: true });
-  if ('onscrollend' in window) car.addEventListener('scrollend', () => { clearTimeout(settleT); settle(); });
+  /* 넘기기 끝나면 사진 누를 때 올라가는 애니메이션 다시 켜기 */
+  let restoreT;
+  car.addEventListener('scroll', () => {
+    clearTimeout(restoreT);
+    restoreT = setTimeout(() => { top.style.transition = ''; }, 150);
+  }, { passive: true });
 }
 
 /* 사진 칸 높이를 지금 보이는 사진 높이로 맞추기 */
 function fitCar() {
   const car = document.getElementById('car');
   if (!car) return;
-  const k = Math.min(car.children.length - 1, Math.round(car.scrollLeft / car.clientWidth));
-  const slide = car.children[k];
-  if (!slide) return;
-  const h = slide.firstElementChild.offsetHeight;
-  car.dataset.h = h;
-  car.style.height = h + 'px';
+  const n = car.children.length;
+  if (!n) return;
+  const x = Math.max(0, Math.min(n - 1, car.scrollLeft / car.clientWidth));
+  const i = Math.floor(x), f = x - i;
+  const hOf = j => car.children[Math.min(j, n - 1)].firstElementChild.offsetHeight;
+  /* 두 사진 사이를 넘기는 비율만큼 높이를 섞어서, 밀면 밀수록 자연스럽게 변함 */
+  const h = hOf(i) * (1 - f) + hOf(i + 1) * f;
+  const wrap = document.getElementById('carwrap');
+  wrap.style.height = h + 'px';
   placeTop();
 }
 
@@ -345,9 +353,7 @@ function placeTop() {
     return;
   }
   /* 사진 칸이 높이 바뀌는 중이어도 최종 높이 기준으로 계산 */
-  const car = document.getElementById('car');
-  const target = car && car.dataset.h ? +car.dataset.h : (car ? car.offsetHeight : 0);
-  const h = top.offsetHeight - (car ? car.offsetHeight : 0) + target;
+  const h = top.offsetHeight;
   const off = Math.max(0, (window.innerHeight - h) / 2 - top.offsetTop);
   top.style.transform = `translateY(${off}px)`;
 }
