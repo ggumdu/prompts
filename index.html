@@ -76,8 +76,17 @@
   .au, .sd { flex: 0 0 100%; min-width: 0; scroll-snap-align: start; }
   .au { cursor: pointer; -webkit-touch-callout: none; }
   /* AU 사진 비율 — 2 / 1 숫자를 바꾸면 사진 높이가 달라져요 */
-  .au-img { width: 100%; aspect-ratio: 2 / 1; background: var(--soft); overflow: hidden; }
-  .au-img img { width: 100%; height: 100%; object-fit: cover; display: block; }
+  /* 사진은 크든 작든 가로폭에 꽉 맞춰지고, 높이는 사진 비율대로 자동 */
+  .au-img { width: 100%; overflow: hidden; }
+  .au-img img { width: 100%; height: auto; display: block; }
+  /* 사진 없을 때 회색 칸 비율 */
+  .au-img.noimg { aspect-ratio: 2 / 1; background: var(--soft); }
+  .car { align-items: flex-start; }
+
+  /* 처음엔 사진이 화면 가운데 → 누르면 위로 올라가면서 프롬프트 등장 */
+  .top { transition: transform .45s cubic-bezier(.2,.7,.2,1); will-change: transform; }
+  .panel { animation: rise .4s ease both; }
+  @keyframes rise { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: none; } }
   .noimg { display: flex; align-items: center; justify-content: center; font-size: 11px; color: var(--sub); }
   .aubar { display: flex; justify-content: space-between; margin-top: 6px; font-size: 11px; color: var(--sub); }
   .aubar b { color: var(--text); font-weight: 600; }
@@ -254,7 +263,7 @@ function bindSl() {
 function auImg(a) {
   const s = (a.image || '').trim();
   return s
-    ? `<div class="au-img"><img src="${esc(s)}" alt="${esc(a.label)}" draggable="false"></div>`
+    ? `<div class="au-img"><img src="${esc(s)}" alt="${esc(a.label)}" draggable="false" onload="placeTop()"></div>`
     : `<div class="au-img noimg">NO IMAGE</div>`;
 }
 
@@ -263,14 +272,23 @@ function openPair(i) {
   openAu = -1;
   const n = cur.aus.length;
   view.innerHTML = `
-    <span class="back" id="back">← index</span>
-    <div class="car" id="car">${cur.aus.map((a, k) => `<div class="au" data-a="${k}">${auImg(a)}</div>`).join('')}</div>
-    <div class="aubar"><span id="aul">${esc(cur.aus[0].label)}</span><span>${n > 1 ? `<b id="aup">1</b> / ${n}` : ''}</span></div>
-    <div class="hint">사진을 누르면 프롬프트가 열려요</div>
+    <div class="top" id="top">
+      <span class="back" id="back">← index</span>
+      <div class="car" id="car">${cur.aus.map((a, k) => `<div class="au" data-a="${k}">${auImg(a)}</div>`).join('')}</div>
+      <div class="aubar"><span id="aul">${esc(cur.aus[0].label)}</span><span>${n > 1 ? `<b id="aup">1</b> / ${n}` : ''}</span></div>
+      <div class="hint">사진을 누르면 프롬프트가 열려요</div>
+    </div>
     <div id="panel"></div>`;
   home.style.display = 'none';
   view.style.display = 'block';
   window.scrollTo(0, 0);
+
+  /* 처음엔 애니메이션 없이 바로 가운데에 */
+  const top = document.getElementById('top');
+  top.style.transition = 'none';
+  placeTop();
+  top.offsetHeight;
+  top.style.transition = '';
 
   const car = document.getElementById('car');
   car.addEventListener('scroll', () => {
@@ -281,9 +299,24 @@ function openPair(i) {
     if (openAu !== -1 && openAu !== k) {
       openAu = -1;
       document.getElementById('panel').innerHTML = '';
+      placeTop();
     }
   });
 }
+
+/* 프롬프트가 닫혀 있으면 사진 묶음을 화면 세로 가운데로, 열려 있으면 원래 자리(위)로 */
+function placeTop() {
+  const top = document.getElementById('top');
+  if (!top) return;
+  if (openAu !== -1) {
+    top.style.transform = 'translateY(0)';
+    return;
+  }
+  const naturalTop = top.offsetTop;
+  const off = Math.max(0, (window.innerHeight - top.offsetHeight) / 2 - naturalTop);
+  top.style.transform = `translateY(${off}px)`;
+}
+window.addEventListener('resize', () => { if (view.style.display === 'block') placeTop(); });
 function showHome() {
   view.style.display = 'none';
   home.style.display = 'flex';
@@ -332,6 +365,7 @@ document.addEventListener('click', e => {
     const pn = document.getElementById('panel');
     if (openAu === a) { openAu = -1; pn.innerHTML = ''; }
     else { openAu = a; pn.innerHTML = panel(a); bindSl(); }
+    placeTop();
     return;
   }
 
