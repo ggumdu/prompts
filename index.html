@@ -81,7 +81,8 @@
   .au-img img { width: 100%; height: auto; display: block; }
   /* 사진 없을 때 회색 칸 비율 */
   .au-img.noimg { aspect-ratio: 2 / 1; background: var(--soft); }
-  .car { align-items: flex-start; }
+  /* 사진 칸 높이를 지금 보이는 사진에 맞춤 — 아래 글씨가 항상 사진 바로 밑에 붙어요 */
+  .car { align-items: flex-start; overflow-y: hidden; transition: height .3s ease; }
 
   /* 처음엔 사진이 화면 가운데 → 누르면 위로 올라가면서 프롬프트 등장 */
   .top { transition: transform .45s cubic-bezier(.2,.7,.2,1); will-change: transform; }
@@ -263,7 +264,7 @@ function bindSl() {
 function auImg(a) {
   const s = (a.image || '').trim();
   return s
-    ? `<div class="au-img"><img src="${esc(s)}" alt="${esc(a.label)}" draggable="false" onload="placeTop()"></div>`
+    ? `<div class="au-img"><img src="${esc(s)}" alt="${esc(a.label)}" draggable="false" onload="fitCar()"></div>`
     : `<div class="au-img noimg">NO IMAGE</div>`;
 }
 
@@ -285,23 +286,41 @@ function openPair(i) {
 
   /* 처음엔 애니메이션 없이 바로 가운데에 */
   const top = document.getElementById('top');
+  const car = document.getElementById('car');
   top.style.transition = 'none';
-  placeTop();
+  car.style.transition = 'none';
+  fitCar();
   top.offsetHeight;
   top.style.transition = '';
+  car.style.transition = '';
 
-  const car = document.getElementById('car');
+  let lastK = 0;
   car.addEventListener('scroll', () => {
     const k = Math.round(car.scrollLeft / car.clientWidth);
+    if (k === lastK) return;
+    lastK = k;
     document.getElementById('aul').textContent = cur.aus[k].label;
     const p = document.getElementById('aup');
     if (p) p.textContent = k + 1;
     if (openAu !== -1 && openAu !== k) {
       openAu = -1;
       document.getElementById('panel').innerHTML = '';
-      placeTop();
     }
+    fitCar();
   });
+}
+
+/* 사진 칸 높이를 지금 보이는 사진 높이로 맞추기 */
+function fitCar() {
+  const car = document.getElementById('car');
+  if (!car) return;
+  const k = Math.min(car.children.length - 1, Math.round(car.scrollLeft / car.clientWidth));
+  const slide = car.children[k];
+  if (!slide) return;
+  const h = slide.firstElementChild.offsetHeight;
+  car.dataset.h = h;
+  car.style.height = h + 'px';
+  placeTop();
 }
 
 /* 프롬프트가 닫혀 있으면 사진 묶음을 화면 세로 가운데로, 열려 있으면 원래 자리(위)로 */
@@ -312,11 +331,14 @@ function placeTop() {
     top.style.transform = 'translateY(0)';
     return;
   }
-  const naturalTop = top.offsetTop;
-  const off = Math.max(0, (window.innerHeight - top.offsetHeight) / 2 - naturalTop);
+  /* 사진 칸이 높이 바뀌는 중이어도 최종 높이 기준으로 계산 */
+  const car = document.getElementById('car');
+  const target = car && car.dataset.h ? +car.dataset.h : (car ? car.offsetHeight : 0);
+  const h = top.offsetHeight - (car ? car.offsetHeight : 0) + target;
+  const off = Math.max(0, (window.innerHeight - h) / 2 - top.offsetTop);
   top.style.transform = `translateY(${off}px)`;
 }
-window.addEventListener('resize', () => { if (view.style.display === 'block') placeTop(); });
+window.addEventListener('resize', () => { if (view.style.display === 'block') fitCar(); });
 function showHome() {
   view.style.display = 'none';
   home.style.display = 'flex';
